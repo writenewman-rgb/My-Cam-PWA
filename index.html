@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+
+```
+<title>PPTX Snap & Batch</title>
+
+<!-- REAL MANIFEST FILE -->
+<link rel="manifest" href="./manifest.json">
+
+<!-- Libraries -->
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.js"></script>
+
+<!-- FIXED PPTX CDN -->
+<script src="https://unpkg.com/pptxgenjs/dist/pptxgen.bundle.js"></script>
+
+<style>
+    :root { --bg:#f8f9fa; --accent:#3498db; }
+
+    body {
+        margin:0;
+        font-family: -apple-system, sans-serif;
+        background: var(--bg);
+        height:100vh;
+        display:flex;
+        flex-direction:column;
+        overflow:hidden;
+    }
+
+    #view-camera, #view-crop, #view-batch {
+        flex:1;
+    }
+
+    #view-camera { background:#000; position:relative; display:flex; flex-direction:column; }
+    #video { width:100%; height:100%; object-fit:cover; }
+
+    .cam-controls {
+        position:absolute;
+        bottom:40px;
+        width:100%;
+        display:flex;
+        justify-content:space-around;
+    }
+
+    #view-crop { display:none; flex-direction:column; background:#000; }
+    .crop-container { flex:1; }
+    .crop-footer { background:#fff; padding:15px; display:flex; gap:10px; }
+
+    #view-batch { display:none; overflow:auto; padding:15px; }
+    .batch-grid { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+
+    nav {
+        height:60px;
+        display:flex;
+        border-top:1px solid #ddd;
+        background:#fff;
+    }
+
+    nav button {
+        flex:1;
+        border:none;
+        background:none;
+    }
+
+    nav button.active { color:var(--accent); }
+</style>
+```
+
+</head>
+
+<body>
+
+<div id="view-camera">
+    <video id="video" autoplay playsinline muted></video>
+
+```
+<div class="cam-controls">
+    <button onclick="showView('batch')">🖼️</button>
+    <button onclick="capturePhoto()">●</button>
+    <button onclick="flipCamera()">🔄</button>
+</div>
+```
+
+</div>
+
+<div id="view-crop">
+    <div class="crop-container">
+        <img id="crop-target">
+    </div>
+    <div class="crop-footer">
+        <button onclick="cancelCrop()">Cancel</button>
+        <button onclick="saveCrop()">Save</button>
+    </div>
+</div>
+
+<div id="view-batch">
+    <h3>Your Batch</h3>
+    <div id="batch-grid" class="batch-grid"></div>
+
+```
+<button onclick="exportToPPTX()">Export PPTX</button>
+<button onclick="clearBatch()">Clear</button>
+```
+
+</div>
+
+<nav>
+    <button id="nav-camera" class="active" onclick="showView('camera')">Camera</button>
+    <button id="nav-batch" onclick="showView('batch')">Batch</button>
+</nav>
+
+<script>
+let state = {
+    photos: [],
+    facingMode: 'environment',
+    stream: null,
+    cropper: null
+};
+
+async function startCamera() {
+    try {
+        if (state.stream) state.stream.getTracks().forEach(t => t.stop());
+
+        state.stream = await navigator.mediaDevices.getUserMedia({
+            video: { facingMode: state.facingMode }
+        });
+
+        const video = document.getElementById('video');
+        video.srcObject = state.stream;
+        await video.play();
+    } catch (e) {
+        alert("Camera error: " + e.message);
+    }
+}
+
+function flipCamera() {
+    state.facingMode = state.facingMode === 'environment' ? 'user' : 'environment';
+    startCamera();
+}
+
+function capturePhoto() {
+    const video = document.getElementById('video');
+    const canvas = document.createElement('canvas');
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(video, 0, 0);
+
+    initCrop(canvas.toDataURL('image/jpeg'));
+}
+
+function initCrop(src) {
+    showView('crop');
+
+    const img = document.getElementById('crop-target');
+    img.src = src;
+
+    if (state.cropper) state.cropper.destroy();
+
+    img.onload = () => {
+        state.cropper = new Cropper(img, {
+            viewMode: 1
+        });
+    };
+}
+
+function cancelCrop() {
+    showView('camera');
+}
+
+function saveCrop() {
+    const canvas = state.cropper.getCroppedCanvas();
+    state.photos.push(canvas.toDataURL('image/jpeg'));
+
+    updateUI();
+    showView('camera');
+}
+
+function showView(view) {
+    ['camera','crop','batch'].forEach(v => {
+        document.getElementById('view-' + v).style.display = 'none';
+    });
+
+    document.getElementById('view-' + view).style.display =
+        (view === 'camera' || view === 'crop') ? 'flex' : 'block';
+
+    ['camera','batch'].forEach(v => {
+        const btn = document.getElementById('nav-' + v);
+        if (btn) btn.classList.remove('active');
+    });
+
+    const active = document.getElementById('nav-' + view);
+    if (active) active.classList.add('active');
+
+    if (view === 'camera') startCamera();
+    if (view === 'batch') renderBatch();
+}
+
+function updateUI() {}
+
+function renderBatch() {
+    const grid = document.getElementById('batch-grid');
+    grid.innerHTML = '';
+
+    state.photos.forEach((p,i) => {
+        const div = document.createElement('div');
+        div.innerHTML = `<img src="${p}" style="width:100%">`;
+        grid.appendChild(div);
+    });
+}
+
+function clearBatch() {
+    state.photos = [];
+    renderBatch();
+}
+
+async function exportToPPTX() {
+    const pptx = new PptxGenJS();
+
+    state.photos.forEach(img => {
+        let slide = pptx.addSlide();
+        slide.addImage({ data: img, x:0, y:0, w:10, h:5.6 });
+    });
+
+    pptx.writeFile("batch.pptx");
+}
+
+/* FIXED SERVICE WORKER */
+if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('./service-worker.js');
+}
+
+/* FIXED CAMERA START (USER CLICK REQUIRED) */
+document.addEventListener('DOMContentLoaded', () => {
+    document.body.addEventListener('click', () => {
+        startCamera();
+    }, { once:true });
+});
+</script>
+
+</body>
+</html>
